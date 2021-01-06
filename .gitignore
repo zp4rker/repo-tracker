@@ -1,0 +1,14 @@
+# global #
+.DS_Store
+.idea/
+*.iml
+target/
+build/
+.gradle/
+gradle/
+gradle.properties
+gradlew.bat
+gradlew
+
+# project #
+logs/
