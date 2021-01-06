@@ -6,6 +6,7 @@ import org.kohsuke.github.GHEvent
 import org.kohsuke.github.GHMyself
 import org.kohsuke.github.GHRepository
 import org.kohsuke.github.GitHubBuilder
+import java.io.File
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
@@ -17,7 +18,11 @@ import kotlin.concurrent.fixedRateTimer
 lateinit var webhook: String
 lateinit var myself: GHMyself
 
+val cache = Cache(File("cache.txt"))
+
 fun main(args: Array<String>) {
+    println("Starting RepoTracker v${Cache::class.java.`package`.implementationVersion}...")
+
     val auth = args[0]
     webhook = args[1]
 
@@ -28,35 +33,47 @@ fun main(args: Array<String>) {
     val avatar = myself.avatarUrl
 
     var lastCheck = ZonedDateTime.now(ZoneOffset.UTC)
+    var cacheUpdated = false
+
     fixedRateTimer(period = TimeUnit.MINUTES.toMillis(1)) {
         for (repo in myself.listRepositories(100, GHMyself.RepositoryListFilter.OWNER)) {
-            when {
-                repo.createdAt.toInstant().epochSecond >= lastCheck.toInstant().epochSecond -> {
-                    val embed = embed {
-                        color = "#202225"
+            if (cache.has(repo)) continue
 
-                        author {
-                            this.name = name
-                            this.iconUrl = avatar
-                        }
+            if (repo.createdAt.toInstant().epochSecond >= lastCheck.toInstant().epochSecond) {
+                val repoName = repo.name
+                val embed = embed {
+                    color = "#202225"
 
-                        title {
-                            this.text = "Created new repository: $name/${repo.name}"
-                            this.url = repo.httpTransportUrl
-                        }
+                    author {
+                        this.name = name
+                        this.iconUrl = avatar
                     }
 
-                    request(
-                        method = "POST",
-                        baseUrl = webhook.dropLast("/github".length),
-                        headers = mapOf("Content-Type" to "application/json"),
-                        content = """{ "embeds": [${embed.toJson().toString(2)}] }"""
-                    )
-
-                    track(repo)
+                    title {
+                        this.text = "Created new repository: $name/$repoName"
+                        this.url = repo.httpTransportUrl
+                    }
                 }
+
+                request(
+                    method = "POST",
+                    baseUrl = webhook.dropLast("/github".length),
+                    headers = mapOf("Content-Type" to "application/json"),
+                    content = """{ "embeds": [${embed.toJson().toString(2)}] }"""
+                )
+
+                println("$name/$repoName was created")
+
+                track(repo)
+            } else if (repo.hooks.none { it.config["url"] == webhook }) {
+                track(repo)
             }
+
+            if (cache.add(repo)) cacheUpdated = true
         }
+
+        lastCheck = ZonedDateTime.now(ZoneOffset.UTC)
+        if (cacheUpdated) cache.save()
     }
 }
 
@@ -72,6 +89,7 @@ private fun track(repo: GHRepository) {
 
     val name = myself.login
     val avatar = myself.avatarUrl
+    val repoName = repo.name
     val embed = embed {
         color = "#202225"
 
@@ -81,10 +99,11 @@ private fun track(repo: GHRepository) {
         }
 
         title {
-            this.text = "Started tracking: $name/${repo.name}"
+            this.text = "Started tracking: $name/$repoName"
             this.url = repo.httpTransportUrl
         }
     }
+
     request(
         method = "POST",
         baseUrl =  webhook.dropLast("/github".length),
@@ -92,5 +111,5 @@ private fun track(repo: GHRepository) {
         content = """{ "embeds": [${embed.toJson().toString(2)}] }"""
     )
 
-//    cache.repos.add(RepoCache.Repo(repo)).also { cacheUpdated = true }
+    println("Started tracking $name/$repoName")
 }

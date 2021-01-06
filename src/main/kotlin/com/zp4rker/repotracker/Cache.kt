@@ -8,7 +8,7 @@ import java.io.File
  */
 class Cache(private val file: File) {
 
-    private val repos = mutableListOf<String>()
+    private val repos = mutableSetOf<String>()
 
     init {
         repos.addAll(file.readLines())
