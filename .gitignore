@@ -11,4 +11,4 @@ gradlew.bat
 gradlew
 
 # project #
-logs/
+cache.txt

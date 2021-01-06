@@ -15,16 +15,19 @@ import kotlin.concurrent.fixedRateTimer
 /**
  * @author zp4rker
  */
+var debug: Boolean = true
+
 lateinit var webhook: String
 lateinit var myself: GHMyself
 
 val cache = Cache(File("cache.txt"))
 
 fun main(args: Array<String>) {
-    println("Starting RepoTracker v${Cache::class.java.`package`.implementationVersion}...")
+    println("Running RepoTracker v${Cache::class.java.`package`.implementationVersion}")
 
     val auth = args[0]
     webhook = args[1]
+    debug = args[2].toBoolean()
 
     val client = GitHubBuilder().withOAuthToken(auth).build()
     myself = client.myself
@@ -36,11 +39,15 @@ fun main(args: Array<String>) {
     var cacheUpdated = false
 
     fixedRateTimer(period = TimeUnit.MINUTES.toMillis(1)) {
+        debug("Starting loop")
         for (repo in myself.listRepositories(100, GHMyself.RepositoryListFilter.OWNER)) {
+            val repoName = repo.name
+            debug("Repo: $repoName")
             if (cache.has(repo)) continue
+            debug("Not in cache")
 
             if (repo.createdAt.toInstant().epochSecond >= lastCheck.toInstant().epochSecond) {
-                val repoName = repo.name
+                debug("Not new")
                 val embed = embed {
                     color = "#202225"
 
@@ -66,11 +73,15 @@ fun main(args: Array<String>) {
 
                 track(repo)
             } else if (repo.hooks.none { it.config["url"] == webhook }) {
+                debug("Doesn't have webhook setup")
                 track(repo)
+            } else {
+                debug("Has webhook setup")
             }
 
             if (cache.add(repo)) cacheUpdated = true
         }
+        debug("Finished loop")
 
         lastCheck = ZonedDateTime.now(ZoneOffset.UTC)
         if (cacheUpdated) cache.save()
@@ -78,7 +89,10 @@ fun main(args: Array<String>) {
 }
 
 private fun track(repo: GHRepository) {
+    val repoName = repo.name
+    debug("Tracking: $repoName")
     if (repo.isArchived) return
+    debug("Is not archived")
 
     repo.createHook(
         "web",
@@ -86,10 +100,10 @@ private fun track(repo: GHRepository) {
         listOf(GHEvent.PUSH),
         true
     )
+    debug("Created webhook")
 
     val name = myself.login
     val avatar = myself.avatarUrl
-    val repoName = repo.name
     val embed = embed {
         color = "#202225"
 
@@ -112,4 +126,11 @@ private fun track(repo: GHRepository) {
     )
 
     println("Started tracking $name/$repoName")
+    debug("Tracked")
+}
+
+private fun debug(message: Any) {
+    if (debug) {
+        println("DEBUG: $message")
+    }
 }
