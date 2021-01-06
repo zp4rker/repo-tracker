@@ -1,7 +1,5 @@
 package com.zp4rker.repotracker
 
-import com.zp4rker.discore.extenstions.embed
-import com.zp4rker.discore.extenstions.toJson
 import org.kohsuke.github.GHEvent
 import org.kohsuke.github.GHMyself
 import org.kohsuke.github.GHRepository
@@ -42,32 +40,26 @@ fun main(args: Array<String>) {
         debug("Starting loop")
         for (repo in myself.listRepositories(100, GHMyself.RepositoryListFilter.OWNER)) {
             val repoName = repo.name
-            debug("Repo: $repoName")
+            debug("Analysing $name/$repoName")
             if (cache.has(repo)) continue
             debug("Not in cache")
 
             if (repo.createdAt.toInstant().epochSecond >= lastCheck.toInstant().epochSecond) {
-                debug("Not new")
-                val embed = embed {
-                    color = "#202225"
+                debug("Is new")
 
-                    author {
-                        this.name = name
-                        this.iconUrl = avatar
+                val json = """
+                    {
+                      "color": 2105893,
+                      "author": {
+                        "name": "$name",
+                        "icon_url": "$avatar"
+                      },
+                      "title": "Created new repository: $name/$repoName",
+                      "url": "${repo.httpTransportUrl}"
                     }
+                """.trimIndent()
 
-                    title {
-                        this.text = "Created new repository: $name/$repoName"
-                        this.url = repo.httpTransportUrl
-                    }
-                }
-
-                request(
-                    method = "POST",
-                    baseUrl = webhook.dropLast("/github".length),
-                    headers = mapOf("Content-Type" to "application/json"),
-                    content = """{ "embeds": [${embed.toJson().toString(2)}] }"""
-                )
+                sendJson(json)
 
                 println("$name/$repoName was created")
 
@@ -75,8 +67,6 @@ fun main(args: Array<String>) {
             } else if (repo.hooks.none { it.config["url"] == webhook }) {
                 debug("Doesn't have webhook setup")
                 track(repo)
-            } else {
-                debug("Has webhook setup")
             }
 
             if (cache.add(repo)) cacheUpdated = true
@@ -104,29 +94,32 @@ private fun track(repo: GHRepository) {
 
     val name = myself.login
     val avatar = myself.avatarUrl
-    val embed = embed {
-        color = "#202225"
 
-        author {
-            this.name = name
-            this.iconUrl = avatar
+    val json = """
+        {
+          "color": 2105893,
+          "author": {
+            "name": "$name",
+            "icon_url": "$avatar"
+          },
+          "title": "Started tracking: $name/$repoName",
+          "url": "${repo.httpTransportUrl}"
         }
+    """.trimIndent()
 
-        title {
-            this.text = "Started tracking: $name/$repoName"
-            this.url = repo.httpTransportUrl
-        }
-    }
-
-    request(
-        method = "POST",
-        baseUrl =  webhook.dropLast("/github".length),
-        headers = mapOf("Content-Type" to "application/json"),
-        content = """{ "embeds": [${embed.toJson().toString(2)}] }"""
-    )
+    sendJson(json)
 
     println("Started tracking $name/$repoName")
     debug("Tracked")
+}
+
+private fun sendJson(json: String) {
+    request(
+        method = "POST",
+        baseUrl =  webhook.dropLast("/github".length),
+        headers = mapOf("Content-Type" to "application/json", "User-Agent" to "RepoTracker/${Cache::class.java.`package`.implementationVersion}"),
+        content = """{ "embeds": [$json] }"""
+    )
 }
 
 private fun debug(message: Any) {
